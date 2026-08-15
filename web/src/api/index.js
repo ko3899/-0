@@ -42,4 +42,13 @@ export const api = {
   reservationCheckIn: (id, roomId) => request(`/reservations/${id}/checkin`, { method: 'POST', body: JSON.stringify({ room_id: roomId }) }),
   listCustomers: (keyword) => request('/customers' + (keyword ? `?keyword=${encodeURIComponent(keyword)}` : '')),
   createCustomer: (data) => request('/customers', { method: 'POST', body: JSON.stringify(data) }),
+  dashboard: () => request('/dashboard'),
+  revenueReport: () => request('/reports/revenue'),
+  occupancyReport: () => request('/reports/occupancy'),
+  listRatePlans: (storeId) => request('/rate-plans' + (storeId ? `?store_id=${storeId}` : '')),
+  listRateCalendar: (storeId, start, end) => request(`/rate-calendar?store_id=${storeId}&start=${start}&end=${end}`),
+  updateRateCalendar: (data) => request('/rate-calendar', { method: 'PUT', body: JSON.stringify(data) }),
+  listMembers: (keyword) => request('/members' + (keyword ? `?keyword=${encodeURIComponent(keyword)}` : '')),
+  rechargeMember: (id, amount) => request(`/members/${id}/recharge`, { method: 'POST', body: JSON.stringify({ amount }) }),
+  adjustMemberPoints: (id, delta) => request(`/members/${id}/points`, { method: 'POST', body: JSON.stringify({ delta }) }),
 }

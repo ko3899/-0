@@ -41,5 +41,20 @@ func New() http.Handler {
 	mux.HandleFunc("GET /api/v1/customers", handler.ListCustomers)
 	mux.HandleFunc("POST /api/v1/customers", handler.CreateCustomer)
 
+	// 报表
+	mux.HandleFunc("GET /api/v1/dashboard", handler.Dashboard)
+	mux.HandleFunc("GET /api/v1/reports/revenue", handler.RevenueReport)
+	mux.HandleFunc("GET /api/v1/reports/occupancy", handler.OccupancyReport)
+
+	// 房价政策
+	mux.HandleFunc("GET /api/v1/rate-plans", handler.ListRatePlans)
+	mux.HandleFunc("GET /api/v1/rate-calendar", handler.ListRateCalendar)
+	mux.HandleFunc("PUT /api/v1/rate-calendar", handler.UpdateRateCalendar)
+
+	// 会员
+	mux.HandleFunc("GET /api/v1/members", handler.ListMembers)
+	mux.HandleFunc("POST /api/v1/members/{id}/recharge", handler.RechargeMember)
+	mux.HandleFunc("POST /api/v1/members/{id}/points", handler.AdjustMemberPoints)
+
 	return mux
 }
