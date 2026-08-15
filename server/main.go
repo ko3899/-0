@@ -52,4 +52,10 @@ func initDB() {
 		return
 	}
 	log.Printf("数据库迁移完成")
+
+	seedCtx, seedCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer seedCancel()
+	if err := db.Seed(seedCtx, pool); err != nil {
+		log.Printf("警告：演示数据注入失败: %v", err)
+	}
 }

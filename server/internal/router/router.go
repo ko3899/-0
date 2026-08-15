@@ -15,9 +15,9 @@ func New() http.Handler {
 	mux.HandleFunc("/health", handler.Health)
 	mux.HandleFunc("/api/v1/ping", handler.Ping)
 
-	// TODO: 业务路由（第一期）
-	// mux.HandleFunc("/api/v1/reservations", ...)
-	// mux.HandleFunc("/api/v1/checkins", ...)
+	// 业务路由（第一期：登录 + 房态）
+	mux.HandleFunc("/api/v1/auth/login", handler.Login)
+	mux.HandleFunc("/api/v1/rooms", handler.ListRooms)
 
 	return mux
 }
