@@ -11,9 +11,10 @@
         text-color="#a6adb4"
         active-text-color="#ffffff"
       >
-        <el-menu-item index="/rooms">
-          <span>房态图</span>
-        </el-menu-item>
+        <el-menu-item index="/rooms"><span>房态图</span></el-menu-item>
+        <el-menu-item index="/checkins"><span>在住管理</span></el-menu-item>
+        <el-menu-item index="/reservations"><span>预订管理</span></el-menu-item>
+        <el-menu-item index="/customers"><span>客户档案</span></el-menu-item>
       </el-menu>
     </el-aside>
 

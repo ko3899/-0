@@ -2,17 +2,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   { path: '/', redirect: '/rooms' },
-  {
-    path: '/login',
-    name: 'Login',
-    component: () => import('../views/Login.vue'),
-    meta: { public: true }
-  },
-  {
-    path: '/rooms',
-    name: 'RoomStatus',
-    component: () => import('../views/RoomStatus.vue')
-  }
+  { path: '/login', name: 'Login', component: () => import('../views/Login.vue'), meta: { public: true } },
+  { path: '/rooms', name: 'RoomStatus', component: () => import('../views/RoomStatus.vue'), meta: { title: '房态图' } },
+  { path: '/checkins', name: 'Checkin', component: () => import('../views/Checkin.vue'), meta: { title: '在住管理' } },
+  { path: '/reservations', name: 'Reservation', component: () => import('../views/Reservation.vue'), meta: { title: '预订管理' } },
+  { path: '/customers', name: 'Customer', component: () => import('../views/Customer.vue'), meta: { title: '客户档案' } }
 ]
 
 const router = createRouter({
