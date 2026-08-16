@@ -45,6 +45,7 @@ func New() http.Handler {
 	mux.HandleFunc("GET /api/v1/dashboard", handler.Dashboard)
 	mux.HandleFunc("GET /api/v1/reports/revenue", handler.RevenueReport)
 	mux.HandleFunc("GET /api/v1/reports/occupancy", handler.OccupancyReport)
+	mux.HandleFunc("GET /api/v1/reports/trend", handler.TrendReport)
 
 	// 房价政策
 	mux.HandleFunc("GET /api/v1/rate-plans", handler.ListRatePlans)

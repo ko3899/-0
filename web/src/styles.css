@@ -1,0 +1,120 @@
+/* ============ 酒店管理系统 全局设计系统 ============ */
+:root {
+  /* 品牌色板 */
+  --brand-900: #0a1a2f;
+  --brand-800: #0e1f33;
+  --brand-700: #15304f;
+  --brand-600: #1e3a5f;
+  --brand-500: #2b5a9c;
+  --brand-400: #3d7bd4;
+  --brand-300: #6ea8e8;
+
+  --gold: #c9a45c;
+  --gold-light: #e6c98a;
+
+  --bg-page: #f0f2f6;
+  --bg-card: #ffffff;
+
+  --text-1: #1f2d3d;
+  --text-2: #5a6b7f;
+  --text-3: #8a97a8;
+
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
+
+  --shadow-card: 0 2px 12px rgba(20, 40, 70, 0.06);
+  --shadow-hover: 0 8px 24px rgba(20, 40, 70, 0.12);
+
+  /* Element Plus 主题色覆盖 */
+  --el-color-primary: #2b5a9c;
+  --el-color-primary-light-3: #5a83bd;
+  --el-color-primary-light-5: #7fa0cc;
+  --el-color-primary-light-7: #a9c0dd;
+  --el-color-primary-light-8: #c0d1e7;
+  --el-color-primary-light-9: #e3ebf5;
+  --el-color-primary-dark-2: #1e3a5f;
+  --el-border-radius-base: 8px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--text-1);
+  background: var(--bg-page);
+  font-size: 14px;
+}
+
+/* 美化滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c6ccd6;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a9b2bf;
+}
+
+/* ============ 通用页面容器 ============ */
+.page {
+  padding: 4px;
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.page-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* ============ 通用卡片 ============ */
+.el-card {
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card) !important;
+  transition: box-shadow 0.2s ease;
+}
+.el-card__header {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* 表格头部 */
+.el-table th.el-table__cell {
+  background: #f7f9fc !important;
+  color: var(--text-2) !important;
+  font-weight: 600;
+}
+
+/* 对话框 */
+.el-dialog {
+  border-radius: var(--radius-lg);
+}
+
+/* 按钮 */
+.el-button {
+  font-weight: 500;
+}

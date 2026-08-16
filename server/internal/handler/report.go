@@ -109,6 +109,50 @@ func RevenueReport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": list, "total": len(list)})
 }
 
+// TrendReport 近 14 天营收与入住趋势（供首页折线图）。
+func TrendReport(w http.ResponseWriter, r *http.Request) {
+	pool := db.Pool()
+	if pool == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "数据库不可用"})
+		return
+	}
+
+	rows, err := pool.Query(r.Context(), `
+		SELECT to_char(d::date, 'YYYY-MM-DD') AS date,
+			COALESCE((SELECT sum(p.amount) FROM payment p WHERE p.pay_time::date = d::date), 0) AS revenue,
+			COALESCE((SELECT count(*) FROM check_in c WHERE c.check_in_time::date = d::date), 0) AS checkins,
+			COALESCE((SELECT count(*) FROM check_in c WHERE c.status = 1 AND c.updated_at::date = d::date), 0) AS checkouts
+		FROM generate_series(CURRENT_DATE - 13, CURRENT_DATE, interval '1 day') AS d
+		ORDER BY d::date`,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type item struct {
+		Date      string  `json:"date"`
+		Revenue   float64 `json:"revenue"`
+		Checkins  int64   `json:"checkins"`
+		Checkouts int64   `json:"checkouts"`
+	}
+	list := make([]item, 0, 14)
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.Date, &it.Revenue, &it.Checkins, &it.Checkouts); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		list = append(list, it)
+	}
+	if err := rows.Err(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": list, "total": len(list)})
+}
+
 // OccupancyReport 房态分布与入住率（按门店）。
 func OccupancyReport(w http.ResponseWriter, r *http.Request) {
 	pool := db.Pool()

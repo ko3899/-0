@@ -45,6 +45,7 @@ export const api = {
   dashboard: () => request('/dashboard'),
   revenueReport: () => request('/reports/revenue'),
   occupancyReport: () => request('/reports/occupancy'),
+  trendReport: () => request('/reports/trend'),
   listRatePlans: (storeId) => request('/rate-plans' + (storeId ? `?store_id=${storeId}` : '')),
   listRateCalendar: (storeId, start, end) => request(`/rate-calendar?store_id=${storeId}&start=${start}&end=${end}`),
   updateRateCalendar: (data) => request('/rate-calendar', { method: 'PUT', body: JSON.stringify(data) }),

@@ -297,11 +297,13 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 			}
 			price := roomTypeDefs[rtIdx].price
 			custID := customerIDs[(i*3+ri)%len(customerIDs)] // 轮转分配客户
+			stayDays := (i*3+ri)%5 + 1                       // 已住 1~5 天，让入住趋势平滑
 
 			var checkInID int64
-			if err := tx.QueryRow(ctx,
+			checkInSQL := fmt.Sprintf(
 				`INSERT INTO check_in (store_id, customer_id, room_id, check_in_time, expected_checkout_time, status)
-				 VALUES ($1, $2, $3, now() - interval '1 day', now() + interval '1 day', 0) RETURNING id`,
+				 VALUES ($1, $2, $3, now() - interval '%d day', now() + interval '1 day', 0) RETURNING id`, stayDays)
+			if err := tx.QueryRow(ctx, checkInSQL,
 				storeIDs[i], custID, roomIDs[i][roomNo],
 			).Scan(&checkInID); err != nil {
 				return err
@@ -324,9 +326,56 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
+	// 12. 历史已结清账单（过去 14 天，支撑营收趋势报表；确定性模式可复现）
+	payMethods := []string{"wechat", "alipay", "bank_card", "cash"}
+	for d := 14; d >= 1; d-- {
+		n := (d % 3) + 1 // 每天 1~3 笔
+		for k := 0; k < n; k++ {
+			si := (d + k) % 3
+			rtIdx := (d + k) % 4
+			custIdx := (d + k) % 6
+			price := roomTypeDefs[rtIdx].price
+			if (d+k)%2 == 0 {
+				price = price * 0.85 // 部分协议价
+			}
+			roomNo := fmt.Sprintf("%d%02d", (d+k)%4+1, (d*3+k)%8+1)
+			roomID := roomIDs[si][roomNo]
+
+			var checkInID int64
+			if err := tx.QueryRow(ctx,
+				`INSERT INTO check_in (store_id, customer_id, room_id, check_in_time, expected_checkout_time, status, updated_at)
+				 VALUES ($1, $2, $3, CURRENT_DATE - $4::int, CURRENT_DATE - $4::int + 1, 1, CURRENT_DATE - $4::int + 1) RETURNING id`,
+				storeIDs[si], customerIDs[custIdx], roomID, d,
+			).Scan(&checkInID); err != nil {
+				return err
+			}
+
+			var folioID int64
+			if err := tx.QueryRow(ctx,
+				`INSERT INTO folio (check_in_id, total_amount, paid_amount, balance, status)
+				 VALUES ($1, $2, $2, 0, 1) RETURNING id`,
+				checkInID, price,
+			).Scan(&folioID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO folio_item (folio_id, item_type, amount, remark) VALUES ($1, 'room_fee', $2, '房费 1 晚')`,
+				folioID, price,
+			); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO payment (folio_id, method, amount, pay_time) VALUES ($1, $2, $3, CURRENT_DATE - $4::int + 1)`,
+				folioID, payMethods[(d+k)%4], price, d,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	log.Printf("演示数据注入完成：3 门店 / 96 间房 / 房价日历 / 客户会员 / 在住账单已就绪（admin/admin123）")
+	log.Printf("演示数据注入完成：3 门店 / 96 间房 / 房价日历 / 客户会员 / 在住账单 / 14 天历史营收已就绪（admin/admin123）")
 	return nil
 }
