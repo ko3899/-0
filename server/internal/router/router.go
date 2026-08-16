@@ -36,7 +36,10 @@ func New() http.Handler {
 	// 预订
 	mux.HandleFunc("POST /api/v1/reservations", handler.CreateReservation)
 	mux.HandleFunc("GET /api/v1/reservations", handler.ListReservations)
+	mux.HandleFunc("PUT /api/v1/reservations/{id}", handler.UpdateReservation)
 	mux.HandleFunc("POST /api/v1/reservations/{id}/checkin", handler.ReservationCheckIn)
+	mux.HandleFunc("POST /api/v1/reservations/{id}/cancel", handler.CancelReservation)
+	mux.HandleFunc("POST /api/v1/reservations/{id}/noshow", handler.ReservationNoShow)
 
 	// 客户
 	mux.HandleFunc("GET /api/v1/customers", handler.ListCustomers)

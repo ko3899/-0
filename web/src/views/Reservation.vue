@@ -32,9 +32,14 @@
       <el-table-column prop="room_type_name" label="房型" width="100" />
       <el-table-column prop="room_no" label="房间" width="75" />
       <el-table-column prop="deposit" label="定金" width="80" />
-      <el-table-column label="操作" width="120" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="row.status === 0" link type="primary" @click="openCheckin(row)">办理入住</el-button>
+          <template v-if="row.status === 0">
+            <el-button link type="primary" @click="openCheckin(row)">办理入住</el-button>
+            <el-button link type="warning" @click="openEdit(row)">修改</el-button>
+            <el-button link type="danger" @click="cancelRes(row)">取消</el-button>
+            <el-button link type="info" @click="noShowRes(row)">No-show</el-button>
+          </template>
           <span v-else style="color:#c0c4cc">-</span>
         </template>
       </el-table-column>
@@ -97,12 +102,47 @@
         <el-button type="primary" :loading="submitting" @click="submitCheckin">确认入住</el-button>
       </template>
     </el-dialog>
+
+    <!-- 修改预订 -->
+    <el-dialog v-model="editVisible" title="修改预订" width="560px" destroy-on-close>
+      <el-form :model="editForm" label-width="90px">
+        <el-form-item label="入住日期" required>
+          <el-date-picker v-model="editForm.check_in_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="离店日期" required>
+          <el-date-picker v-model="editForm.check_out_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="房型">
+          <el-select v-model="editForm.room_type_id" clearable placeholder="选填" style="width: 100%">
+            <el-option v-for="t in editRoomTypes" :key="t.id" :label="t.name" :value="t.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="渠道">
+          <el-select v-model="editForm.channel" style="width: 100%">
+            <el-option label="到店" value="walk_in" />
+            <el-option label="电话" value="phone" />
+            <el-option label="线上" value="online" />
+            <el-option label="OTA" value="ota" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="定金">
+          <el-input-number v-model="editForm.deposit" :min="0" :precision="2" :step="50" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="editForm.remark" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 
 const statusMap = {
@@ -120,11 +160,21 @@ const status = ref(null)
 const list = ref([])
 const createVisible = ref(false)
 const checkinVisible = ref(false)
+const editVisible = ref(false)
 const submitting = ref(false)
 const roomTypes = ref([])
+const editRoomTypes = ref([])
 const currentRes = ref(null)
 const availableRooms = ref([])
 const selectedRoomId = ref(null)
+const editForm = ref({
+  check_in_date: '',
+  check_out_date: '',
+  room_type_id: null,
+  channel: 'walk_in',
+  deposit: 0,
+  remark: ''
+})
 
 const form = ref({
   store_id: null,
@@ -235,6 +285,84 @@ async function submitCheckin() {
     ElMessage.error(e.message)
   } finally {
     submitting.value = false
+  }
+}
+
+async function openEdit(row) {
+  currentRes.value = row
+  editForm.value = {
+    check_in_date: fmtDate(row.check_in_date),
+    check_out_date: fmtDate(row.check_out_date),
+    room_type_id: row.room_type_id || null,
+    channel: row.channel,
+    deposit: row.deposit,
+    remark: row.remark || ''
+  }
+  editVisible.value = true
+  editRoomTypes.value = []
+  if (row.store_id) {
+    try {
+      const d = await api.listRoomTypes(row.store_id)
+      editRoomTypes.value = d.room_types || []
+    } catch (e) {
+      ElMessage.error(e.message)
+    }
+  }
+}
+
+async function submitEdit() {
+  const f = editForm.value
+  if (!f.check_in_date || !f.check_out_date) {
+    ElMessage.warning('请选择入住/离店日期')
+    return
+  }
+  submitting.value = true
+  try {
+    await api.updateReservation(currentRes.value.id, {
+      check_in_date: f.check_in_date,
+      check_out_date: f.check_out_date,
+      room_type_id: f.room_type_id || 0,
+      channel: f.channel,
+      deposit: f.deposit,
+      remark: f.remark
+    })
+    ElMessage.success('预订已修改')
+    editVisible.value = false
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function cancelRes(row) {
+  try {
+    await ElMessageBox.confirm(`确认取消预订 #${row.id}（${row.guest_name}）？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await api.cancelReservation(row.id)
+    ElMessage.success('预订已取消')
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
+async function noShowRes(row) {
+  try {
+    await ElMessageBox.confirm(`确认将预订 #${row.id}（${row.guest_name}）标记为 No-show？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await api.reservationNoShow(row.id)
+    ElMessage.success('已标记 No-show')
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
   }
 }
 

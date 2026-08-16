@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"hotel-management/server/internal/db"
 )
@@ -80,6 +83,19 @@ func CreateReservation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 1.5 房型库存冲突检测
+	if req.RoomTypeID > 0 {
+		ok, err := checkRoomTypeAvailable(r.Context(), tx, req.StoreID, req.RoomTypeID, req.CheckInDate, req.CheckOutDate, 0)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if !ok {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "该房型在所选日期已订满，请调整日期或房型"})
+			return
+		}
+	}
+
 	// 2. 创建预订
 	var reservationID int64
 	if err := tx.QueryRow(r.Context(),
@@ -127,13 +143,18 @@ func ListReservations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	storeID := queryInt64(r, "store_id")
-	status := queryInt64(r, "status")
+	status := -1
+	if s := r.URL.Query().Get("status"); s != "" {
+		status, _ = strconv.Atoi(s)
+	}
 	u := currentUser(r)
 
 	query := `SELECT r.id, r.store_id, s.name, c.name, COALESCE(c.phone,''), r.channel, r.status,
 	                 r.check_in_date, r.check_out_date, r.deposit, COALESCE(r.contact,''),
 	                 COALESCE((SELECT rt.name FROM reservation_item ri JOIN room_type rt ON rt.id = ri.room_type_id WHERE ri.reservation_id = r.id LIMIT 1), ''),
-	                 COALESCE((SELECT rm.room_no FROM reservation_item ri LEFT JOIN room rm ON rm.id = ri.room_id WHERE ri.reservation_id = r.id LIMIT 1), '')
+	                 COALESCE((SELECT rm.room_no FROM reservation_item ri LEFT JOIN room rm ON rm.id = ri.room_id WHERE ri.reservation_id = r.id LIMIT 1), ''),
+	                 COALESCE((SELECT ri.room_type_id FROM reservation_item ri WHERE ri.reservation_id = r.id LIMIT 1), 0),
+	                 COALESCE(r.remark, '')
 	          FROM reservation r
 	          JOIN store s ON s.id = r.store_id
 	          JOIN customer c ON c.id = r.customer_id
@@ -185,12 +206,14 @@ func ListReservations(w http.ResponseWriter, r *http.Request) {
 		Contact      string    `json:"contact"`
 		RoomTypeName string    `json:"room_type_name"`
 		RoomNo       string    `json:"room_no"`
+		RoomTypeID   int64     `json:"room_type_id"`
+		Remark       string    `json:"remark"`
 	}
 	list := make([]reservation, 0)
 	for rows.Next() {
 		var rv reservation
 		if err := rows.Scan(&rv.ID, &rv.StoreID, &rv.StoreName, &rv.GuestName, &rv.GuestPhone, &rv.Channel, &rv.Status,
-			&rv.CheckInDate, &rv.CheckOutDate, &rv.Deposit, &rv.Contact, &rv.RoomTypeName, &rv.RoomNo); err != nil {
+			&rv.CheckInDate, &rv.CheckOutDate, &rv.Deposit, &rv.Contact, &rv.RoomTypeName, &rv.RoomNo, &rv.RoomTypeID, &rv.Remark); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -356,4 +379,244 @@ func ReservationCheckIn(w http.ResponseWriter, r *http.Request) {
 // itoa 整数转字符串。
 func itoa(n int) string {
 	return strconv.Itoa(n)
+}
+
+// checkRoomTypeAvailable 房型库存冲突检测：同门店同房型在日期区间内
+// 已有的预订(0)+已入住(1)数量是否已达可用房间数。excludeResID 用于修改时排除自身。
+func checkRoomTypeAvailable(ctx context.Context, tx pgx.Tx, storeID, roomTypeID int64, checkIn, checkOut string, excludeResID int64) (bool, error) {
+	var roomCount int
+	if err := tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM room WHERE store_id = $1 AND room_type_id = $2 AND status != 3`,
+		storeID, roomTypeID,
+	).Scan(&roomCount); err != nil {
+		return false, err
+	}
+	var overlap int
+	if err := tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM reservation r
+		 JOIN reservation_item ri ON ri.reservation_id = r.id
+		 WHERE r.store_id = $1 AND ri.room_type_id = $2
+		   AND r.status IN (0, 1)
+		   AND r.id != $3
+		   AND r.check_in_date < $5::date
+		   AND r.check_out_date > $4::date`,
+		storeID, roomTypeID, excludeResID, checkIn, checkOut,
+	).Scan(&overlap); err != nil {
+		return false, err
+	}
+	return overlap < roomCount, nil
+}
+
+// UpdateReservation 修改预订：仅状态=预订(0)可改，日期/房型/渠道/联系人/备注/定金。
+func UpdateReservation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req struct {
+		Channel      string   `json:"channel"`
+		CheckInDate  string   `json:"check_in_date"`
+		CheckOutDate string   `json:"check_out_date"`
+		RoomTypeID   int64    `json:"room_type_id"`
+		Contact      *string  `json:"contact"`
+		Remark       *string  `json:"remark"`
+		Deposit      *float64 `json:"deposit"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	reservationID := pathID(r.URL.Path)
+	if reservationID == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少预订 ID"})
+		return
+	}
+
+	pool := db.Pool()
+	if pool == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "数据库不可用"})
+		return
+	}
+
+	tx, err := pool.Begin(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var (
+		storeID     int64
+		status      int
+		curIn       time.Time
+		curOut      time.Time
+		curRoomType int64
+	)
+	if err := tx.QueryRow(r.Context(),
+		`SELECT store_id, status, check_in_date, check_out_date,
+		        COALESCE((SELECT room_type_id FROM reservation_item WHERE reservation_id = r.id LIMIT 1), 0)
+		 FROM reservation r WHERE id = $1 FOR UPDATE`, reservationID,
+	).Scan(&storeID, &status, &curIn, &curOut, &curRoomType); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "预订不存在"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店"})
+		return
+	}
+	if status != 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "仅预订状态可修改"})
+		return
+	}
+
+	newIn := curIn
+	newOut := curOut
+	if req.CheckInDate != "" {
+		newIn, err = time.Parse("2006-01-02", req.CheckInDate)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "入住日期格式应为 YYYY-MM-DD"})
+			return
+		}
+	}
+	if req.CheckOutDate != "" {
+		newOut, err = time.Parse("2006-01-02", req.CheckOutDate)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "离店日期格式应为 YYYY-MM-DD"})
+			return
+		}
+	}
+	if !newOut.After(newIn) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "离店日期必须晚于入住日期"})
+		return
+	}
+
+	newRoomType := curRoomType
+	if req.RoomTypeID > 0 {
+		newRoomType = req.RoomTypeID
+	}
+	if newRoomType > 0 {
+		ok, err := checkRoomTypeAvailable(r.Context(), tx, storeID, newRoomType, newIn.Format("2006-01-02"), newOut.Format("2006-01-02"), reservationID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if !ok {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "该房型在所选日期已订满，请调整日期或房型"})
+			return
+		}
+	}
+
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE reservation SET check_in_date = $1, check_out_date = $2,
+		        channel = COALESCE(NULLIF($3,''), channel),
+		        contact = COALESCE($4, contact), remark = COALESCE($5, remark),
+		        deposit = COALESCE($6, deposit), updated_at = now()
+		 WHERE id = $7`,
+		newIn, newOut, req.Channel, req.Contact, req.Remark, req.Deposit, reservationID,
+	); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if req.RoomTypeID > 0 && req.RoomTypeID != curRoomType {
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE reservation_item SET room_type_id = $1, updated_at = now() WHERE reservation_id = $2`,
+			req.RoomTypeID, reservationID,
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": reservationID, "ok": true})
+}
+
+// CancelReservation 取消预订：状态 0→2。
+func CancelReservation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	reservationID := pathID(r.URL.Path)
+	if reservationID == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少预订 ID"})
+		return
+	}
+	pool := db.Pool()
+	if pool == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "数据库不可用"})
+		return
+	}
+	var (
+		storeID int64
+		status  int
+	)
+	if err := pool.QueryRow(r.Context(),
+		`SELECT store_id, status FROM reservation WHERE id = $1`, reservationID,
+	).Scan(&storeID, &status); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "预订不存在"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店"})
+		return
+	}
+	if status != 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "仅预订状态可取消"})
+		return
+	}
+	if _, err := pool.Exec(r.Context(),
+		`UPDATE reservation SET status = 2, updated_at = now() WHERE id = $1`, reservationID,
+	); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": reservationID, "status": 2})
+}
+
+// ReservationNoShow 预订未到（No-show）：状态 0→4。
+func ReservationNoShow(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	reservationID := pathID(r.URL.Path)
+	if reservationID == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少预订 ID"})
+		return
+	}
+	pool := db.Pool()
+	if pool == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "数据库不可用"})
+		return
+	}
+	var (
+		storeID int64
+		status  int
+	)
+	if err := pool.QueryRow(r.Context(),
+		`SELECT store_id, status FROM reservation WHERE id = $1`, reservationID,
+	).Scan(&storeID, &status); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "预订不存在"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店"})
+		return
+	}
+	if status != 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "仅预订状态可标记 No-show"})
+		return
+	}
+	if _, err := pool.Exec(r.Context(),
+		`UPDATE reservation SET status = 4, updated_at = now() WHERE id = $1`, reservationID,
+	); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": reservationID, "status": 4})
 }

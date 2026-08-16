@@ -40,6 +40,9 @@ export const api = {
     return request('/reservations' + (s ? `?${s}` : ''))
   },
   reservationCheckIn: (id, roomId) => request(`/reservations/${id}/checkin`, { method: 'POST', body: JSON.stringify({ room_id: roomId }) }),
+  updateReservation: (id, data) => request(`/reservations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  cancelReservation: (id) => request(`/reservations/${id}/cancel`, { method: 'POST' }),
+  reservationNoShow: (id) => request(`/reservations/${id}/noshow`, { method: 'POST' }),
   listCustomers: (keyword) => request('/customers' + (keyword ? `?keyword=${encodeURIComponent(keyword)}` : '')),
   createCustomer: (data) => request('/customers', { method: 'POST', body: JSON.stringify(data) }),
   dashboard: () => request('/dashboard'),
