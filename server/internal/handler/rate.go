@@ -18,9 +18,14 @@ func ListRatePlans(w http.ResponseWriter, r *http.Request) {
 	storeID := queryInt64(r, "store_id")
 	query := `SELECT id, store_id, name, type, status FROM rate_plan`
 	args := make([]any, 0, 1)
-	if storeID > 0 {
-		query += ` WHERE store_id = $1`
-		args = append(args, storeID)
+	cond, scopeArgs, forbidden := storeCond(r, storeID, "store_id")
+	if forbidden {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权访问该门店"})
+		return
+	}
+	if cond != "" {
+		query += " WHERE " + cond
+		args = append(args, scopeArgs...)
 	}
 	query += ` ORDER BY store_id, id`
 
@@ -65,6 +70,10 @@ func ListRateCalendar(w http.ResponseWriter, r *http.Request) {
 	storeID := queryInt64(r, "store_id")
 	if storeID <= 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 store_id 参数"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权访问该门店"})
 		return
 	}
 	start := r.URL.Query().Get("start")
@@ -140,6 +149,10 @@ func UpdateRateCalendar(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.StoreID <= 0 || req.RoomTypeID <= 0 || req.RatePlanID <= 0 || req.BizDate == "" || req.Price <= 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "参数不完整（需 store_id/room_type_id/rate_plan_id/biz_date/price）"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(req.StoreID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店"})
 		return
 	}
 

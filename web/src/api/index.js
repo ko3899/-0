@@ -52,4 +52,8 @@ export const api = {
   listMembers: (keyword) => request('/members' + (keyword ? `?keyword=${encodeURIComponent(keyword)}` : '')),
   rechargeMember: (id, amount) => request(`/members/${id}/recharge`, { method: 'POST', body: JSON.stringify({ amount }) }),
   adjustMemberPoints: (id, delta) => request(`/members/${id}/points`, { method: 'POST', body: JSON.stringify({ delta }) }),
+  listRoles: () => request('/roles'),
+  listUsers: () => request('/users'),
+  createUser: (data) => request('/users', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id, data) => request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 }

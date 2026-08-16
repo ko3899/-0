@@ -35,6 +35,10 @@ func CreateReservation(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "门店/客户/入住离店日期不能为空"})
 		return
 	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(req.StoreID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店"})
+		return
+	}
 	if req.Channel == "" {
 		req.Channel = "walk_in"
 	}
@@ -124,6 +128,7 @@ func ListReservations(w http.ResponseWriter, r *http.Request) {
 
 	storeID := queryInt64(r, "store_id")
 	status := queryInt64(r, "status")
+	u := currentUser(r)
 
 	query := `SELECT r.id, r.store_id, s.name, c.name, COALESCE(c.phone,''), r.channel, r.status,
 	                 r.check_in_date, r.check_out_date, r.deposit, COALESCE(r.contact,''),
@@ -136,9 +141,21 @@ func ListReservations(w http.ResponseWriter, r *http.Request) {
 	args := []any{}
 	argIdx := 1
 	if storeID > 0 {
+		if u != nil && !u.IsAdmin && !u.canAccessStore(storeID) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权访问该门店"})
+			return
+		}
 		query += ` AND r.store_id = $` + itoa(argIdx)
 		args = append(args, storeID)
 		argIdx++
+	} else if u != nil && !u.IsAdmin {
+		if len(u.StoreIDs) == 0 {
+			query += ` AND FALSE`
+		} else {
+			query += ` AND r.store_id = ANY($` + itoa(argIdx) + `)`
+			args = append(args, u.StoreIDs)
+			argIdx++
+		}
 	}
 	if status >= 0 {
 		query += ` AND r.status = $` + itoa(argIdx)
@@ -233,6 +250,10 @@ func ReservationCheckIn(w http.ResponseWriter, r *http.Request) {
 		`SELECT store_id, customer_id, status, deposit FROM reservation WHERE id = $1 FOR UPDATE`, reservationID,
 	).Scan(&storeID, &customerID, &status, &deposit); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "预订不存在"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店"})
 		return
 	}
 	if status != 0 {

@@ -59,6 +59,10 @@ func CreateCheckIn(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "房间不存在"})
 		return
 	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店"})
+		return
+	}
 	if status != 0 && status != 1 {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "当前房间状态不可入住"})
 		return
@@ -206,12 +210,16 @@ func CheckOut(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	var roomID int64
+	var roomID, storeID int64
 	var status int
 	if err := tx.QueryRow(r.Context(),
-		`SELECT room_id, status FROM check_in WHERE id = $1 FOR UPDATE`, checkInID,
-	).Scan(&roomID, &status); err != nil {
+		`SELECT room_id, store_id, status FROM check_in WHERE id = $1 FOR UPDATE`, checkInID,
+	).Scan(&roomID, &storeID, &status); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "入住记录不存在"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店"})
 		return
 	}
 	if status == 1 {
@@ -301,9 +309,14 @@ func ListCheckIns(w http.ResponseWriter, r *http.Request) {
 	          JOIN folio f ON f.check_in_id = ci.id
 	          WHERE ci.status = 0`
 	args := []any{}
-	if storeID > 0 {
-		query += ` AND ci.store_id = $1`
-		args = append(args, storeID)
+	cond, scopeArgs, forbidden := storeCond(r, storeID, "ci.store_id")
+	if forbidden {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权访问该门店"})
+		return
+	}
+	if cond != "" {
+		query += ` AND ` + cond
+		args = append(args, scopeArgs...)
 	}
 	query += ` ORDER BY ci.check_in_time DESC`
 
@@ -359,6 +372,18 @@ func GetFolio(w http.ResponseWriter, r *http.Request) {
 	checkInID := pathID(r.URL.Path)
 	if checkInID == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少入住记录 ID"})
+		return
+	}
+
+	var storeID int64
+	if err := pool.QueryRow(r.Context(),
+		`SELECT store_id FROM check_in WHERE id = $1`, checkInID,
+	).Scan(&storeID); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "入住记录不存在"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权访问该门店"})
 		return
 	}
 

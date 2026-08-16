@@ -6,23 +6,13 @@ import (
 	"hotel-management/server/internal/db"
 )
 
-// ListStores 门店列表接口（总部视角可看全部门店）。
+// ListStores 门店列表接口（按用户数据权限返回门店；管理员可见全部）。
 func ListStores(w http.ResponseWriter, r *http.Request) {
 	pool := db.Pool()
 	if pool == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "数据库不可用"})
 		return
 	}
-
-	rows, err := pool.Query(r.Context(),
-		`SELECT id, name, COALESCE(address,''), COALESCE(phone,''), COALESCE(manager,''), status
-		 FROM store ORDER BY id`,
-	)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	defer rows.Close()
 
 	type store struct {
 		ID      int64  `json:"id"`
@@ -32,6 +22,27 @@ func ListStores(w http.ResponseWriter, r *http.Request) {
 		Manager string `json:"manager"`
 		Status  int    `json:"status"`
 	}
+
+	query := `SELECT id, name, COALESCE(address,''), COALESCE(phone,''), COALESCE(manager,''), status
+	          FROM store`
+	args := []any{}
+	if u := currentUser(r); u != nil && !u.IsAdmin {
+		if len(u.StoreIDs) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"stores": []store{}, "total": 0})
+			return
+		}
+		query += ` WHERE id = ANY($1)`
+		args = append(args, u.StoreIDs)
+	}
+	query += ` ORDER BY id`
+
+	rows, err := pool.Query(r.Context(), query, args...)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	list := make([]store, 0)
 	for rows.Next() {
 		var s store

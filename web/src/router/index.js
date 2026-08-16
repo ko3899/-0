@@ -9,7 +9,8 @@ const routes = [
   { path: '/reservations', name: 'Reservation', component: () => import('../views/Reservation.vue'), meta: { title: '预订管理' } },
   { path: '/customers', name: 'Customer', component: () => import('../views/Customer.vue'), meta: { title: '客户档案' } },
   { path: '/members', name: 'Member', component: () => import('../views/Member.vue'), meta: { title: '会员管理' } },
-  { path: '/rates', name: 'Rate', component: () => import('../views/Rate.vue'), meta: { title: '房价管理' } }
+  { path: '/rates', name: 'Rate', component: () => import('../views/Rate.vue'), meta: { title: '房价管理' } },
+  { path: '/users', name: 'Users', component: () => import('../views/Users.vue'), meta: { title: '用户管理' } }
 ]
 
 const router = createRouter({

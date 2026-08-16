@@ -56,6 +56,9 @@
           <el-menu-item index="/rates">
             <el-icon><Coin /></el-icon><span>房价管理</span>
           </el-menu-item>
+          <el-menu-item v-if="isAdmin" index="/users">
+            <el-icon><Setting /></el-icon><span>用户管理</span>
+          </el-menu-item>
         </el-menu-item-group>
       </el-menu>
     </el-aside>
@@ -74,7 +77,7 @@
             size="default"
             @change="onStoreChange"
           >
-            <el-option label="全部门店" :value="0" />
+            <el-option v-if="isAdmin" label="全部门店" :value="0" />
             <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
 
@@ -110,7 +113,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Odometer, Grid, UserFilled, Calendar, Avatar, Medal, Coin, ArrowDown, SwitchButton
+  Odometer, Grid, UserFilled, Calendar, Avatar, Medal, Coin, ArrowDown, SwitchButton, Setting
 } from '@element-plus/icons-vue'
 import { api } from './api'
 
@@ -128,6 +131,7 @@ const user = computed(() => {
 })
 const userName = computed(() => user.value.name || user.value.username || '未登录')
 const roleName = computed(() => user.value.role_name || user.value.role || '员工')
+const isAdmin = computed(() => Boolean(user.value.is_admin || user.value.role_level >= 9))
 const avatarChar = computed(() => userName.value.slice(0, 1).toUpperCase())
 
 const menuTitles = {
@@ -137,14 +141,20 @@ const menuTitles = {
   '/reservations': '预订管理',
   '/customers': '客户档案',
   '/members': '会员管理',
-  '/rates': '房价管理'
+  '/rates': '房价管理',
+  '/users': '用户管理'
 }
 const currentTitle = computed(() => menuTitles[router.currentRoute.value.path] || '酒店管理系统')
 
 async function loadStores() {
   try {
     const r = await api.listStores()
-    stores.value = r.items || r || []
+    stores.value = r.stores || []
+    // 非管理员且未选择门店时，默认选中第一个有权限的门店
+    if (!isAdmin.value && stores.value.length > 0 && currentStoreId.value === 0) {
+      currentStoreId.value = stores.value[0].id
+      localStorage.setItem('current_store', String(currentStoreId.value))
+    }
   } catch (e) {
     /* 静默失败，不影响主界面 */
   }

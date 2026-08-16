@@ -6,7 +6,7 @@ import (
 	"hotel-management/server/internal/db"
 )
 
-// ListRooms 房态查询接口：支持 store_id 过滤，返回房间列表（含房型/床型/容纳人数）。
+// ListRooms 房态查询接口：支持 store_id 过滤，按用户数据权限隔离，返回房间列表。
 func ListRooms(w http.ResponseWriter, r *http.Request) {
 	pool := db.Pool()
 	if pool == nil {
@@ -23,10 +23,17 @@ func ListRooms(w http.ResponseWriter, r *http.Request) {
 	          LEFT JOIN check_in ci ON ci.room_id = r.id AND ci.status = 0
 	          LEFT JOIN folio f ON f.check_in_id = ci.id`
 	args := []any{}
-	if storeID > 0 {
-		query += ` WHERE r.store_id = $1`
-		args = append(args, storeID)
+
+	cond, scopeArgs, forbidden := storeCond(r, storeID, "r.store_id")
+	if forbidden {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权访问该门店"})
+		return
 	}
+	if cond != "" {
+		query += " WHERE " + cond
+		args = append(args, scopeArgs...)
+	}
+
 	query += ` ORDER BY r.store_id, r.floor, r.room_no`
 
 	rows, err := pool.Query(r.Context(), query, args...)
@@ -65,7 +72,7 @@ func ListRooms(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"rooms": list, "total": len(list)})
 }
 
-// ListRoomTypes 房型列表接口（按门店），供预订/入住选房型。
+// ListRoomTypes 房型列表接口（按门店，含数据权限隔离），供预订/入住选房型。
 func ListRoomTypes(w http.ResponseWriter, r *http.Request) {
 	pool := db.Pool()
 	if pool == nil {
@@ -77,10 +84,17 @@ func ListRoomTypes(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT id, store_id, name, COALESCE(bed_type,''), capacity
 	          FROM room_type`
 	args := []any{}
-	if storeID > 0 {
-		query += ` WHERE store_id = $1`
-		args = append(args, storeID)
+
+	cond, scopeArgs, forbidden := storeCond(r, storeID, "store_id")
+	if forbidden {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权访问该门店"})
+		return
 	}
+	if cond != "" {
+		query += " WHERE " + cond
+		args = append(args, scopeArgs...)
+	}
+
 	query += ` ORDER BY id`
 
 	rows, err := pool.Query(r.Context(), query, args...)
@@ -114,7 +128,7 @@ func ListRoomTypes(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateRoomStatus 房间状态变更接口：清洁(0)/空脏(1)/维修(3)/预留(4)。
-// 住客(2)房间必须先退房才能变更。
+// 住客(2)房间必须先退房才能变更；受门店数据权限约束。
 func UpdateRoomStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -145,11 +159,18 @@ func UpdateRoomStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var cur int
+	var (
+		storeID int64
+		cur     int
+	)
 	if err := pool.QueryRow(r.Context(),
-		`SELECT status FROM room WHERE id = $1`, roomID,
-	).Scan(&cur); err != nil {
+		`SELECT store_id, status FROM room WHERE id = $1`, roomID,
+	).Scan(&storeID, &cur); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "房间不存在"})
+		return
+	}
+	if u := currentUser(r); u != nil && !u.canAccessStore(storeID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "无权操作该门店房间"})
 		return
 	}
 	if cur == 2 {

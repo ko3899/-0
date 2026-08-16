@@ -17,6 +17,7 @@ func New() http.Handler {
 
 	// 认证
 	mux.HandleFunc("POST /api/v1/auth/login", handler.Login)
+	mux.HandleFunc("POST /api/v1/auth/logout", handler.Logout)
 
 	// 门店
 	mux.HandleFunc("GET /api/v1/stores", handler.ListStores)
@@ -57,5 +58,11 @@ func New() http.Handler {
 	mux.HandleFunc("POST /api/v1/members/{id}/recharge", handler.RechargeMember)
 	mux.HandleFunc("POST /api/v1/members/{id}/points", handler.AdjustMemberPoints)
 
-	return mux
+	// 权限管理（用户/角色，写操作仅管理员）
+	mux.HandleFunc("GET /api/v1/roles", handler.ListRoles)
+	mux.HandleFunc("GET /api/v1/users", handler.ListUsers)
+	mux.HandleFunc("POST /api/v1/users", handler.CreateUser)
+	mux.HandleFunc("PUT /api/v1/users/{id}", handler.UpdateUser)
+
+	return handler.AuthMiddleware(mux)
 }
