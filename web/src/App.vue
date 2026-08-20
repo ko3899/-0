@@ -41,6 +41,12 @@
           <el-menu-item index="/reservations">
             <el-icon><Calendar /></el-icon><span>预订管理</span>
           </el-menu-item>
+          <el-menu-item index="/housekeeping">
+            <el-icon><Brush /></el-icon><span>客房清洁</span>
+          </el-menu-item>
+          <el-menu-item index="/night-audit">
+            <el-icon><Moon /></el-icon><span>夜审管理</span>
+          </el-menu-item>
         </el-menu-item-group>
 
         <el-menu-item-group title="客户管理">
@@ -52,12 +58,24 @@
           </el-menu-item>
         </el-menu-item-group>
 
+        <el-menu-item-group title="财务管理">
+          <el-menu-item index="/invoice">
+            <el-icon><Tickets /></el-icon><span>发票管理</span>
+          </el-menu-item>
+        </el-menu-item-group>
+
         <el-menu-item-group title="系统设置">
           <el-menu-item index="/rates">
             <el-icon><Coin /></el-icon><span>房价管理</span>
           </el-menu-item>
           <el-menu-item v-if="isAdmin" index="/users">
             <el-icon><Setting /></el-icon><span>用户管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="isAdmin" index="/ota">
+            <el-icon><Connection /></el-icon><span>OTA 渠道对接</span>
+          </el-menu-item>
+          <el-menu-item v-if="isAdmin" index="/operation-logs">
+            <el-icon><Document /></el-icon><span>操作日志</span>
           </el-menu-item>
         </el-menu-item-group>
       </el-menu>
@@ -113,7 +131,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Odometer, Grid, UserFilled, Calendar, Avatar, Medal, Coin, ArrowDown, SwitchButton, Setting
+  Odometer, Grid, UserFilled, Calendar, Avatar, Medal, Coin, ArrowDown, SwitchButton, Setting, Document, Connection, Brush, Moon, Tickets
 } from '@element-plus/icons-vue'
 import { api } from './api'
 
@@ -139,10 +157,15 @@ const menuTitles = {
   '/rooms': '房态图',
   '/checkins': '在住管理',
   '/reservations': '预订管理',
+  '/housekeeping': '客房清洁',
+  '/night-audit': '夜审管理',
   '/customers': '客户档案',
   '/members': '会员管理',
+  '/invoice': '发票管理',
   '/rates': '房价管理',
-  '/users': '用户管理'
+  '/users': '用户管理',
+  '/ota': 'OTA 渠道对接',
+  '/operation-logs': '操作日志'
 }
 const currentTitle = computed(() => menuTitles[router.currentRoute.value.path] || '酒店管理系统')
 

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -132,6 +133,7 @@ func CreateReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": reservationID})
+	LogAction(w, r, req.StoreID, "reservation_create", itoa64(reservationID), req.CustomerName+" 预订")
 }
 
 // ListReservations 预订列表接口（按门店/状态过滤）。
@@ -374,11 +376,17 @@ func ReservationCheckIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"check_in_id": checkInID, "total_amount": price})
+	LogAction(w, r, storeID, "reservation_checkin", itoa64(reservationID), fmt.Sprintf("预订转入住 check_in=%d", checkInID))
 }
 
-// itoa 整数转字符串。
+// itoa 整数转字符串（int 版本）。
 func itoa(n int) string {
 	return strconv.Itoa(n)
+}
+
+// itoa64 整数转字符串（int64 版本）。
+func itoa64(n int64) string {
+	return strconv.FormatInt(n, 10)
 }
 
 // checkRoomTypeAvailable 房型库存冲突检测：同门店同房型在日期区间内
@@ -533,6 +541,7 @@ func UpdateReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": reservationID, "ok": true})
+	LogAction(w, r, storeID, "reservation_update", itoa64(reservationID), "修改预订")
 }
 
 // CancelReservation 取消预订：状态 0→2。
@@ -576,6 +585,7 @@ func CancelReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": reservationID, "status": 2})
+	LogAction(w, r, storeID, "reservation_cancel", itoa64(reservationID), "取消预订")
 }
 
 // ReservationNoShow 预订未到（No-show）：状态 0→4。
@@ -619,4 +629,5 @@ func ReservationNoShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": reservationID, "status": 4})
+	LogAction(w, r, storeID, "reservation_noshow", itoa64(reservationID), "No-show")
 }

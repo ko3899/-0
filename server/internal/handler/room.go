@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"hotel-management/server/internal/db"
@@ -184,5 +185,8 @@ func UpdateRoomStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	// 异步推送 OTA 库存（房态变更后可售变化）
+	PushInventoryByRoom(pool, roomID)
 	writeJSON(w, http.StatusOK, map[string]any{"id": roomID, "status": req.Status})
+	LogAction(w, r, storeID, "room_status", itoa64(roomID), fmt.Sprintf("房态 %d→%d", cur, req.Status))
 }

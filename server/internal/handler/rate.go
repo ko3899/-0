@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -187,4 +188,14 @@ func UpdateRateCalendar(w http.ResponseWriter, r *http.Request) {
 	)
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "old_price": oldPrice, "new_price": req.Price})
+
+	// 异步推送 OTA 价格
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		bizTime, err := time.Parse("2006-01-02", req.BizDate)
+		if err == nil {
+			PushRate(ctx, pool, req.StoreID, req.RoomTypeID, bizTime, req.Price)
+		}
+	}()
 }

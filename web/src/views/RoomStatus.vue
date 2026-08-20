@@ -10,12 +10,17 @@
         </span>
       </div>
       <el-button type="primary" @click="loadRooms">刷新</el-button>
+      <el-button type="success" @click="openFloorManager">楼层管理</el-button>
+      <el-button type="warning" @click="openRoomAdd">添加房间</el-button>
     </div>
 
     <div v-if="!rooms.length" class="empty-tip">暂无房间数据，请选择门店后刷新</div>
 
     <div v-for="(list, floor) in floorGroups" :key="floor" class="floor-block">
-      <div class="floor-title">{{ floor }} 楼</div>
+      <div class="floor-title">
+        {{ floor }} 楼
+        <span class="floor-room-count">（{{ list.length }} 间）</span>
+      </div>
       <div class="room-grid">
         <div
           v-for="room in list"
@@ -31,6 +36,7 @@
       </div>
     </div>
 
+    <!-- 房间操作弹窗 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="560px" destroy-on-close>
       <div v-if="currentRoom" class="room-info">
         <el-tag>{{ currentRoom.room_no }}</el-tag>
@@ -38,7 +44,6 @@
         <el-tag :type="statusTagType(currentRoom.status)" effect="dark">{{ statusMap[currentRoom.status].label }}</el-tag>
       </div>
 
-      <!-- 操作选择（非住客房间先选操作） -->
       <div v-if="action === ''" class="action-btns">
         <el-button
           v-for="a in availableActions"
@@ -48,13 +53,12 @@
         >{{ a.label }}</el-button>
       </div>
 
-      <!-- 入住表单 -->
       <el-form v-if="action === 'checkin'" :model="checkinForm" label-width="90px">
         <el-form-item label="客人姓名" required>
           <el-input v-model="checkinForm.customer_name" placeholder="必填" />
         </el-form-item>
         <el-form-item label="手机号">
-          <el-input v-model="checkinForm.customer_phone" placeholder="选填，按手机号识别老客户" />
+          <el-input v-model="checkinForm.customer_phone" placeholder="选填" />
         </el-form-item>
         <el-form-item label="证件号">
           <el-input v-model="checkinForm.id_no" placeholder="选填" />
@@ -71,7 +75,6 @@
         </el-form-item>
       </el-form>
 
-      <!-- 退房结算 -->
       <div v-else-if="action === 'checkout'" class="checkout-box">
         <el-descriptions :column="1" border>
           <el-descriptions-item label="账单总额">¥ {{ currentRoom.total_amount }}</el-descriptions-item>
@@ -92,7 +95,6 @@
         </el-form>
       </div>
 
-      <!-- 状态变更确认 -->
       <div v-else-if="action === 'change'" class="confirm-box">
         <el-alert :title="changeText" type="warning" :closable="false" show-icon />
       </div>
@@ -102,12 +104,68 @@
         <el-button v-if="action !== ''" type="primary" :loading="submitting" @click="submit">{{ submitText }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- 楼层管理弹窗 -->
+    <el-dialog v-model="floorDialogVisible" title="楼层管理" width="600px" destroy-on-close @closed="loadRooms">
+      <el-table :data="floors" border stripe style="margin-bottom: 12px">
+        <el-table-column prop="name" label="楼层名称" width="140" />
+        <el-table-column prop="sort_order" label="排序" width="80" />
+        <el-table-column prop="room_count" label="房间数" width="80" />
+        <el-table-column label="操作" width="160">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" @click="editFloorRow(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="deleteFloorRow(row)" :disabled="row.room_count > 0">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-form :model="floorForm" label-width="80px" :inline="true">
+        <el-form-item label="楼层名称">
+          <el-input v-model="floorForm.name" placeholder="如 5楼、大堂层" style="width: 140px" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="floorForm.sort_order" :min="0" :max="99" style="width: 100px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="success" @click="saveFloor">{{ editingFloorId ? '保存' : '添加楼层' }}</el-button>
+          <el-button v-if="editingFloorId" @click="cancelEditFloor">取消编辑</el-button>
+        </el-form-item>
+      </el-form>
+    </el-dialog>
+
+    <!-- 添加房间弹窗 -->
+    <el-dialog v-model="roomAddVisible" title="添加房间" width="500px" destroy-on-close @closed="loadRooms">
+      <el-form :model="roomForm" label-width="90px">
+        <el-form-item label="楼层" required>
+          <el-select v-model="roomForm.floor" placeholder="选择楼层" style="width: 100%">
+            <el-option v-for="f in floors" :key="f.name" :label="f.name + '楼'" :value="f.name" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="房型" required>
+          <el-select v-model="roomForm.room_type_id" placeholder="选择房型" style="width: 100%">
+            <el-option v-for="rt in roomTypes" :key="rt.id" :label="rt.name + '（' + (rt.bed_type || '通用') + '）'" :value="rt.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="房号" required>
+          <el-input v-model="roomForm.room_no" placeholder="如 501、5A01" />
+        </el-form-item>
+        <el-form-item label="初始状态">
+          <el-select v-model="roomForm.status" style="width: 100%">
+            <el-option v-for="(c, k) in statusMap" :key="k" :label="c.label" :value="Number(k)" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="roomAddVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="doAddRoom">确认添加</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 
 const statusMap = {
@@ -130,6 +188,17 @@ const checkinForm = ref({ customer_name: '', customer_phone: '', id_no: '', nigh
 const checkoutAmount = ref(0)
 const checkoutMethod = ref('cash')
 const changeStatus = ref(0)
+
+// 楼层管理
+const floorDialogVisible = ref(false)
+const floors = ref([])
+const editingFloorId = ref(0)
+const floorForm = ref({ name: '', sort_order: 0 })
+
+// 房间管理
+const roomAddVisible = ref(false)
+const roomTypes = ref([])
+const roomForm = ref({ floor: '', room_type_id: null, room_no: '', status: 0 })
 
 const floorGroups = computed(() => {
   const g = {}
@@ -162,7 +231,6 @@ const changeText = computed(() => {
   return labels[changeStatus.value] || ''
 })
 
-// 根据房间状态返回可选操作
 const availableActions = computed(() => {
   const s = currentRoom.value ? currentRoom.value.status : 0
   const map = {
@@ -195,6 +263,111 @@ function chooseAction(key) {
   } else {
     action.value = 'change'
     changeStatus.value = { clean: 0, maintain: 3, reserve: 4, restore: 0, unreserve: 0 }[key] || 0
+  }
+}
+
+// ========== 楼层管理 ==========
+async function loadFloors() {
+  if (!storeId.value) return
+  try {
+    const d = await api.listFloors(storeId.value)
+    floors.value = d.floors || []
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
+function openFloorManager() {
+  if (!storeId.value) {
+    ElMessage.warning('请先选择门店')
+    return
+  }
+  editingFloorId.value = 0
+  floorForm.value = { name: '', sort_order: 0 }
+  loadFloors()
+  floorDialogVisible.value = true
+}
+
+function editFloorRow(row) {
+  editingFloorId.value = row.id
+  floorForm.value = { name: row.name, sort_order: row.sort_order }
+}
+
+function cancelEditFloor() {
+  editingFloorId.value = 0
+  floorForm.value = { name: '', sort_order: 0 }
+}
+
+async function saveFloor() {
+  if (!floorForm.value.name.trim()) {
+    ElMessage.warning('请输入楼层名称')
+    return
+  }
+  try {
+    if (editingFloorId.value) {
+      await api.updateFloor(editingFloorId.value, floorForm.value)
+      ElMessage.success('楼层已更新')
+    } else {
+      await api.createFloor({ store_id: storeId.value, name: floorForm.value.name.trim(), sort_order: floorForm.value.sort_order })
+      ElMessage.success('楼层已添加')
+    }
+    cancelEditFloor()
+    loadFloors()
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
+async function deleteFloorRow(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除楼层「${row.name}」吗？`, '删除确认', { type: 'warning' })
+    await api.deleteFloor(row.id)
+    ElMessage.success('楼层已删除')
+    loadFloors()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message)
+  }
+}
+
+// ========== 房间管理 ==========
+async function openRoomAdd() {
+  if (!storeId.value) {
+    ElMessage.warning('请先选择门店')
+    return
+  }
+  roomForm.value = { floor: '', room_type_id: null, room_no: '', status: 0 }
+  try {
+    const [fd, rt] = await Promise.all([api.listFloors(storeId.value), api.listRoomTypes(storeId.value)])
+    floors.value = fd.floors || []
+    roomTypes.value = rt.room_types || []
+    if (!roomTypes.value.length) ElMessage.warning('请先创建房型')
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+  roomAddVisible.value = true
+}
+
+async function doAddRoom() {
+  const f = roomForm.value
+  if (!f.floor || !f.room_type_id || !f.room_no.trim()) {
+    ElMessage.warning('楼层、房型和房号不能为空')
+    return
+  }
+  submitting.value = true
+  try {
+    await api.createRoom({
+      store_id: storeId.value,
+      room_type_id: f.room_type_id,
+      room_no: f.room_no.trim(),
+      floor: f.floor,
+      status: f.status
+    })
+    ElMessage.success('房间已添加')
+    roomAddVisible.value = false
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -298,8 +471,9 @@ onMounted(loadStores)
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 .legend {
   display: flex;
@@ -334,6 +508,11 @@ onMounted(loadStores)
   margin-bottom: 8px;
   padding-left: 4px;
   border-left: 3px solid #409eff;
+}
+.floor-room-count {
+  font-weight: normal;
+  font-size: 12px;
+  color: #909399;
 }
 .room-grid {
   display: flex;

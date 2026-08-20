@@ -83,7 +83,7 @@ func bearerToken(r *http.Request) string {
 // isPublicPath 公开接口（无需登录）。
 func isPublicPath(path string) bool {
 	switch path {
-	case "/health", "/api/v1/ping", "/api/v1/auth/login":
+	case "/health", "/api/v1/ping", "/api/v1/auth/login", "/api/v1/ota/orders/callback":
 		return true
 	}
 	return false
@@ -242,6 +242,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 			"store_ids":  storeIDs,
 		},
 	})
+	// 记录登录日志
+	logRaw(w, r, 0, id, req.Username, "login", req.Username, "用户登录")
 }
 
 // Logout 登出接口：删除当前会话。
@@ -257,4 +259,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"message": "已登出"})
+	if u := currentUser(r); u != nil {
+		LogAction(w, r, 0, "logout", u.Username, "用户登出")
+	}
 }

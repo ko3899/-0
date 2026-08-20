@@ -112,11 +112,11 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Username  string  `json:"username"`
-		Password  string  `json:"password"`
-		Name      string  `json:"name"`
-		RoleID    int64   `json:"role_id"`
-		StoreIDs  []int64 `json:"store_ids"`
+		Username string  `json:"username"`
+		Password string  `json:"password"`
+		Name     string  `json:"name"`
+		RoleID   int64   `json:"role_id"`
+		StoreIDs []int64 `json:"store_ids"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -168,6 +168,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": userID})
+	LogAction(w, r, 0, "user_create", itoa64(userID), req.Username+" 创建用户")
 }
 
 // UpdateUser 编辑用户（仅管理员）：姓名/角色/状态/密码/门店权限。
@@ -275,4 +276,5 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": userID, "ok": true})
+	LogAction(w, r, 0, "user_edit", itoa64(userID), "编辑用户")
 }

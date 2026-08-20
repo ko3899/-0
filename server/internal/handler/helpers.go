@@ -26,8 +26,27 @@ func pathID(path string) int64 {
 	return id
 }
 
+// pathValueInt64 从 Go 1.22+ 路径参数中提取 int64（通用，适用于任意路径层级）。
+func pathValueInt64(r *http.Request, name string) int64 {
+	v, _ := strconv.ParseInt(r.PathValue(name), 10, 64)
+	return v
+}
+
 // queryInt64 从 query 参数解析 int64，缺省返回 0。
 func queryInt64(r *http.Request, key string) int64 {
 	v, _ := strconv.ParseInt(r.URL.Query().Get(key), 10, 64)
 	return v
+}
+
+// queryFloat 从 query 参数解析 float64，缺省返回 nil。
+func queryFloat(r *http.Request, key string) *float64 {
+	s := r.URL.Query().Get(key)
+	if s == "" {
+		return nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return nil
+	}
+	return &v
 }
