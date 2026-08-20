@@ -20,8 +20,11 @@
         <el-button type="primary" size="large" class="login-btn" :loading="loading" @click="onLogin">
           登 录
         </el-button>
+        <el-button size="large" class="demo-btn" @click="enterDemo">
+          进入演示模式
+        </el-button>
       </el-form>
-      <p class="login-tip">演示账号：admin / admin123</p>
+      <p class="login-tip">演示账号：admin / admin123（需连接后端）</p>
     </el-card>
   </div>
 </template>
@@ -63,6 +66,13 @@ async function onLogin() {
     loading.value = false
   }
 }
+
+function enterDemo() {
+  localStorage.setItem('token', 'demo-token')
+  localStorage.setItem('user', JSON.stringify({ id: 0, username: 'demo', name: '演示模式', role: '集团管理员', role_level: 9, is_admin: true, store_ids: [] }))
+  ElMessage.success('已进入演示模式（界面可浏览，数据需连接后端）')
+  router.push('/dashboard')
+}
 </script>
 
 <style scoped>
@@ -92,6 +102,10 @@ async function onLogin() {
 }
 .login-btn {
   width: 100%;
+}
+.demo-btn {
+  width: 100%;
+  margin-top: 10px;
 }
 .login-tip {
   text-align: center;

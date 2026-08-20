@@ -1,8 +1,23 @@
 const BASE = '/api/v1'
 
+// 演示模式：没有后端时返回空数据，避免报错
+function demoMock(path) {
+  return {
+    stores: [], rooms: [], room_types: [], check_ins: [], reservations: [],
+    customers: [], members: [], plans: [], items: [], tasks: [], orders: [],
+    invoices: [], titles: [], logs: [], users: [], roles: [], quotas: [],
+    channels: [], mappings: [], floors: [], staff: [], summary: {},
+    total: 0, ok: true,
+  }
+}
+
 async function request(path, options = {}) {
-  const headers = { 'Content-Type': 'application/json' }
   const token = localStorage.getItem('token')
+  // 演示模式：返回 mock 空数据，不请求后端
+  if (token === 'demo-token') {
+    return demoMock(path)
+  }
+  const headers = { 'Content-Type': 'application/json' }
   if (token) headers.Authorization = 'Bearer ' + token
   let res
   try {
